@@ -1,11 +1,13 @@
+from collections import deque
 import sys
 import glob
 import os
 import random
 import cv2
 import numpy as np
-import time
-import threading
+import torch
+import torchvision
+from torchvision.models.utils import load_state_dict_from_url
 
 try:
     sys.path.append(glob.glob('/opt/carla-simulator/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
@@ -17,104 +19,93 @@ except IndexError:
 
 import carla
 
-
-class DrivingEnv:
-
-    CAM_WIDTH = 800
-    CAM_HEIGHT = 600
-    CAM_FOV = 110
-
-    view = None
-    done = False
-
-    def __init__(self, client):
-        self.client = client
-        self.lock = threading.Lock()
-        self._create_main_actors()
-
-    def step(self, control):
-        with self.lock:
-            self.vehicle.apply_control(control)
-        return self.view, self.done
-
-    def reset(self):
-        with self.lock:
-            self.view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
-            self.done = False
-            self._destroy_main_actors()
-            self._create_main_actors()
-        return self.view
-
-    def _create_main_actors(self):
-        world = self.client.get_world()
-        blueprint_library = world.get_blueprint_library()
-
-        # Create vehicle
-        vehicle_bp = blueprint_library.filter('model3')[0]
-        vehicle_spawn_point = random.choice(world.get_map().get_spawn_points())
-        self.vehicle = world.spawn_actor(vehicle_bp, vehicle_spawn_point)
-
-        # Create camera
-        camera_bp = blueprint_library.find('sensor.camera.rgb')
-        camera_bp.set_attribute('image_size_x', self.CAM_WIDTH)
-        camera_bp.set_attribute('image_size_y', self.CAM_HEIGHT)
-        camera_bp.set_attribute('fov', self.CAM_FOV)
-        camera_spawn_point = carla.Transform(carla.Location(x=2.5, z=0.7))
-        self.camera = world.spawn_actor(camera_bp, camera_spawn_point, attach_to=self.vehicle)
-        self.camera.listen(self._camera_update)
-
-        # Create collision sensor
-        collision_bp = world.get_blueprint_library().find('sensor.other.collision')
-        collision_spawn_point = carla.Transform(carla.Location(x=0, z=0))
-        self.collision = world.spawn_actor(collision_bp, collision_spawn_point, attach_to=self.vehicle)
-        self.collision.listen(self._collision_update)
-
-        # Create lane invasion detector
-        lane_bp = world.get_blueprint_library().find('sensor.other.lane_invasion')
-        lane_spawn_point = carla.Transform(carla.Location(x=0, z=0))
-        self.lane = world.spawn_actor(lane_bp, lane_spawn_point, attach_to=self.vehicle)
-        self.lane.listen(self._lane_invasion_update)
-
-    def _destroy_main_actors(self):
-        self.vehicle.destroy()
-        self.camera.destroy()
-        self.collision.destroy()
-
-    def _camera_update(self, x):
-        self.view = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
-
-    def _collision_update(self, event):
-        self.done = True
-
-    def _lane_invasion_update(self, event):
-        print(event)
-
+from env import DrivingEnv
 
 class RandomAgent:
     def __init__(self):
         pass
 
-    def act(self, view):
-        return carla.VehicleControl(
-            throttle=random.random(),
-            steer=random.random())
+    def memorize(self, *args):
+        pass
 
+    def act(self, view):
+        return random.choice(range(3))
+
+
+class DQNAgent:
+    def __init__(self):
+        self.device = 'cuda'
+        self.model = torchvision.models.mobilenet_v2(num_classes=3)
+        state_dict = load_state_dict_from_url('https://download.pytorch.org/models/mobilenet_v2-b0353104.pth')
+        del state_dict['classifier.1.weight']
+        del state_dict['classifier.1.bias']
+        self.model.load_state_dict(state_dict, strict=False)
+        self.model.to(self.device)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
+        self.gamma = 0.99
+        self.memory = deque(maxlen=1000)
+
+    def memorize(self, view, action, next_view, reward, done):
+        view = torch.as_tensor(view).permute(2, 0, 1).float().div_(255.).unsqueeze_(0)
+        next_view = torch.as_tensor(next_view).permute(2, 0, 1).float().div_(255.).unsqueeze_(0)
+        self.memory.append((view, action, next_view, reward, done))
+        return self.learn()
+
+    def learn(self):
+        view, action, next_view, reward, done = zip(*random.choices(self.memory, k=20))
+        view = torch.cat(view).to(self.device)
+        next_view = torch.cat(next_view).to(self.device)
+        action = torch.tensor(action)
+        done = torch.tensor(done)
+        reward = torch.tensor(reward).float().to(self.device)
+
+        pred = self.model(view)[torch.arange(view.size(0)), action]
+        true = reward
+        true[~done] += self.gamma * self.model(next_view[~done]).amax(dim=1).detach()
+
+        loss = torch.nn.functional.mse_loss(pred, true)
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+        return loss
+
+    def act(self, view):
+        view = torch.as_tensor(view).permute(2, 0, 1).float().div_(255.).unsqueeze_(0).to(self.device)
+        with torch.no_grad():
+            self.model.eval()
+            quality = self.model(view)
+            action = quality.argmax()
+        return action.item()
+    
 
 client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 
 env = DrivingEnv(client)
-agent = RandomAgent()
+agent = DQNAgent()
 
+epsilon = 1
+epsilon_decay = 0.995
+epsilon_min = 0.01
 
 for episode in range(500):
     view = env.reset()
     while True:
+        if random.random() < epsilon:
+            action = random.choice(range(3))
+        else:
+            action = agent.act(view)
+        control = carla.VehicleControl(throttle=1, steer=[-1, 0, 1][action])
+        next_view, reward, done = env.step(control)
+        loss = agent.memorize(view, action, next_view, reward, done)
+        view = next_view
+        cv2.imshow('', view)
+        cv2.waitKey(1)
 
-        control = agent.act(view)
-        view, done = env.step(control)
         if done:
             break
 
-        cv2.imshow('', view)
-        cv2.waitKey(1)
+    epsilon = epsilon * epsilon_decay
+    epsilon = max(epsilon, epsilon_min)
+
+    print(f'Episode: {episode}, loss: {loss}, epsilon: {epsilon}')
