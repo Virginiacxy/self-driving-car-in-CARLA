@@ -27,6 +27,7 @@ client.set_timeout(10.0)
 env = DrivingEnv(client)
 agent = DQNAgent()
 
+loss = -1
 epsilon = 1
 epsilon_decay = 0.995
 epsilon_min = 0.01
@@ -40,7 +41,7 @@ for episode in range(10000000):
             action = agent.act(view)
         control = carla.VehicleControl(throttle=1, steer=[-1, 0, 1][action])
         next_view, reward, done = env.step(control)
-        if iteration > 100:
+        if iteration > 30:
             loss = agent.memorize(view, action, next_view, reward, done)
         view = next_view
         cv2.imshow('rgb', view[:, :, 0:3])
@@ -54,7 +55,7 @@ for episode in range(10000000):
     epsilon = epsilon * epsilon_decay
     epsilon = max(epsilon, epsilon_min)
 
-    print(f'Episode: {episode}, loss: {loss}, epsilon: {epsilon}, total_reward: {env.total_reward}')
+    print(f'Episode: {episode}, iterations: {iteration} loss: {loss}, epsilon: {epsilon}, total_reward: {env.total_reward}')
 
     if (episode + 1) % 5 == 0:
         agent.save('checkpoint.pth')
