@@ -35,4 +35,5 @@ for episode in range(10000000):
         cv2.waitKey(1)
 
         if done:
+            print(f'Episode {episode}, total_reward: {env.total_reward}')
             break

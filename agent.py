@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import random
 from collections import deque
-from model import MobileNetV2Encoder
+from model import *
 
 class RandomAgent:
     def __init__(self):
@@ -17,10 +17,9 @@ class RandomAgent:
 
 
 class DQNAgent:
-    def __init__(self):
-        self.device = 'cuda'
+    def __init__(self, device='cuda'):
+        self.device = device
         self.model = MobileNetV2Encoder(in_channels=7, out_classes=3)
-        self.model.load_pretrained_weights()
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
         self.gamma = 0.99
@@ -33,7 +32,7 @@ class DQNAgent:
         return self.learn()
 
     def learn(self):
-        view, action, next_view, reward, done = zip(*random.choices(self.memory, k=20))
+        view, action, next_view, reward, done = zip(*random.choices(self.memory, k=8))
         view = torch.cat(view).to(self.device)
         next_view = torch.cat(next_view).to(self.device)
         action = torch.tensor(action)

@@ -2,13 +2,14 @@ import carla
 import numpy as np
 import random
 import threading
+from collections import deque
 
 import cv2
 
 
 class DrivingEnv:
-    CAM_WIDTH = 224
-    CAM_HEIGHT = 224
+    CAM_WIDTH = 64
+    CAM_HEIGHT = 64
     CAM_FOV = 110
 
     view = None
@@ -17,45 +18,44 @@ class DrivingEnv:
 
     def __init__(self, client):
         self.client = client
-        self.lock = threading.Lock()
-        self._create_main_actors()
+        self.world = self.client.get_world()
 
         # Change to use synchronized fixed time-step 
-        world = self.client.get_world()
-        settings = world.get_settings()
+        settings = self.world.get_settings()
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = 0.5
-        world.apply_settings(settings)
+        self.world.apply_settings(settings)
 
+        self._create_main_actors()
 
     def step(self, control):
-        with self.lock:
-            self.vehicle.apply_control(control)
+        self.vehicle.apply_control(control)
+        self.world.tick()
 
-            # Reward
-            if self.done:
-                reward = -50
-            else:
-                reward = 1 - 10 * self.invasion_count
-            self.invasion_count = 0
-            self.total_reward += reward
-            self.client.get_world().tick()
+        # Reward
+        if self.done:
+            reward = -50
+        else:
+            reward = 1
+
+        self.invasion_count = 0
+        self.total_reward += reward
         return self._get_current_view(), reward, self.done
 
     def reset(self):
-        with self.lock:
-            self.rgb_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
-            self.seg_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
-            self.depth_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 1))
-            self.done = False
-            self.total_reward = 0
-            self._destroy_main_actors()
-            self._create_main_actors()
+        self.rgb_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
+        self.seg_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
+        self.depth_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 1))
+        self.locations = deque(maxlen=10)
+        self.done = False
+        self.total_reward = 0
+        self._destroy_main_actors()
+        self._create_main_actors()
+        self.world.tick()
         return self._get_current_view()
 
     def _create_main_actors(self):
         try:
-            self.world = self.client.get_world()
             blueprint_library = self.world.get_blueprint_library()
 
             # Create vehicle
@@ -101,6 +101,11 @@ class DrivingEnv:
             lane_spawn_point = carla.Transform(carla.Location(x=0, z=0))
             self.lane = self.world.spawn_actor(lane_bp, lane_spawn_point, attach_to=self.vehicle)
             self.lane.listen(self._lane_invasion_update)
+
+            # Initialize speed
+            self.vehicle.apply_control(carla.VehicleControl(throttle = 1))
+            for _ in range(30):
+                self.world.tick()
         except:
             self._destroy_main_actors()
             self._create_main_actors()
@@ -114,32 +119,28 @@ class DrivingEnv:
         self.lane.destroy()
 
     def _camera_update(self, x):
-        with self.lock:
-            x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
-            x = x.astype('float32') / 255.
-            self.rgb_view = x
+        x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
+        x = x.astype('float32') / 255.
+        self.rgb_view = x
 
     def _collision_update(self, event):
-        with self.lock:
-            self.done = True
+        self.done = True
 
     def _lane_invasion_update(self, event):
-        with self.lock:
-            self.invasion_count += 1
+        self.done = True
+        # self.invasion_count += 1
 
     def _depth_sensor_update(self, x):
-        with self.lock:
-            x.convert(carla.ColorConverter.LogarithmicDepth)
-            x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :1]
-            x = x.astype('float32') / 255.
-            self.depth_view = x
+        x.convert(carla.ColorConverter.LogarithmicDepth)
+        x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :1]
+        x = x.astype('float32') / 255.
+        self.depth_view = x
     
     def _segmentation_sensor_update(self, x):
-        with self.lock:
-            x.convert(carla.ColorConverter.CityScapesPalette)
-            x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
-            x = x.astype('float32') / 255.
-            self.seg_view = x
+        x.convert(carla.ColorConverter.CityScapesPalette)
+        x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
+        x = x.astype('float32') / 255.
+        self.seg_view = x
 
     def _get_current_view(self):
         return np.concatenate([self.rgb_view, self.depth_view, self.seg_view], axis=-1).astype('float32')
