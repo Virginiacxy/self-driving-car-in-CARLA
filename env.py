@@ -20,6 +20,14 @@ class DrivingEnv:
         self.lock = threading.Lock()
         self._create_main_actors()
 
+        # Change to use synchronized fixed time-step 
+        world = self.client.get_world()
+        settings = world.get_settings()
+        settings.synchronous_mode = True
+        settings.fixed_delta_seconds = 0.5
+        world.apply_settings(settings)
+
+
     def step(self, control):
         with self.lock:
             self.vehicle.apply_control(control)
@@ -30,6 +38,8 @@ class DrivingEnv:
             else:
                 reward = 1 - 10 * self.invasion_count
             self.invasion_count = 0
+            self.total_reward += reward
+            self.client.get_world().tick()
         return self._get_current_view(), reward, self.done
 
     def reset(self):
@@ -38,6 +48,7 @@ class DrivingEnv:
             self.seg_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
             self.depth_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 1))
             self.done = False
+            self.total_reward = 0
             self._destroy_main_actors()
             self._create_main_actors()
         return self._get_current_view()
