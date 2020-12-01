@@ -3,6 +3,8 @@ import numpy as np
 import random
 import threading
 
+import cv2
+
 
 class DrivingEnv:
     CAM_WIDTH = 224
@@ -28,15 +30,16 @@ class DrivingEnv:
             else:
                 reward = 1 - 10 * self.invasion_count
             self.invasion_count = 0
-        return self.view, reward, self.done
+        return self._get_current_view(), reward, self.done
 
     def reset(self):
         with self.lock:
-            self.view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
+            self.rgb_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
+            self.depth_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 1))
             self.done = False
             self._destroy_main_actors()
             self._create_main_actors()
-        return self.view
+        return self._get_current_view()
 
     def _create_main_actors(self):
         self.world = self.client.get_world()
@@ -52,7 +55,7 @@ class DrivingEnv:
         camera_bp.set_attribute('image_size_x', str(self.CAM_WIDTH))
         camera_bp.set_attribute('image_size_y', str(self.CAM_HEIGHT))
         camera_bp.set_attribute('fov', str(self.CAM_FOV))
-        camera_spawn_point = carla.Transform(carla.Location(x=2.5, z=0.7))
+        camera_spawn_point = carla.Transform(carla.Location(x=2.5, z=1.5))
         self.camera = self.world.spawn_actor(camera_bp, camera_spawn_point, attach_to=self.vehicle)
         self.camera.listen(self._camera_update)
 
@@ -67,22 +70,9 @@ class DrivingEnv:
         depth_bp.set_attribute('image_size_x', str(self.CAM_WIDTH))
         depth_bp.set_attribute('image_size_y', str(self.CAM_HEIGHT))
         depth_bp.set_attribute('fov', str(self.CAM_FOV))
-        depth_spawn_point = carla.Transform(carla.Location(x=2.5, z=0.7))
+        depth_spawn_point = carla.Transform(carla.Location(x=2.5, z=1.5))
         self.depth_sen = self.world.spawn_actor(depth_bp, depth_spawn_point, attach_to=self.vehicle)
-
-        # Create LIDAR sensor
-        # lidar_cam = None
-        lidar_bp = blueprint_library.find('sensor.lidar.ray_cast')
-        lidar_bp.set_attribute('channels', str(32))
-        lidar_bp.set_attribute('points_per_second', str(90000))
-        lidar_bp.set_attribute('rotation_frequency', str(40))
-        lidar_bp.set_attribute('range', str(20))
-        lidar_location = carla.Location(0, 0, 2)
-        lidar_rotation = carla.Rotation(0, 0, 0)
-        lidar_transform = carla.Transform(lidar_location, lidar_rotation)
-        self.lidar_sen = self.world.spawn_actor(lidar_bp, lidar_transform, attach_to=self.vehicle)
-        self.lidar_sen.listen(
-            lambda point_cloud: point_cloud.save_to_disk('tutorial/new_lidar_output/%.6d.ply' % point_cloud.frame))
+        self.depth_sen.listen(self._depth_sensor_update)
 
         # Create lane invasion detector
         lane_bp = self.world.get_blueprint_library().find('sensor.other.lane_invasion')
@@ -97,7 +87,9 @@ class DrivingEnv:
 
     def _camera_update(self, x):
         with self.lock:
-            self.view = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
+            x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
+            x = x.astype('float32') / 255.
+            self.rgb_view = x
 
     def _collision_update(self, event):
         with self.lock:
@@ -107,35 +99,12 @@ class DrivingEnv:
         with self.lock:
             self.invasion_count += 1
 
-    def spawn_vehicles(self, n):
-        traffic_manager = self.client.get_trafficmanager(8000)
-        traffic_manager.set_global_distance_to_leading_vehicle(1.0)
-        blueprints = self.world.get_blueprint_library().filter('vehicle.*')
-        blueprints = sorted(blueprints, key=lambda bp: bp.id)
-        vehicles_list = []
-        spawn_points = self.world.get_map().get_spawn_points()
-        random.shuffle(spawn_points)
-        SpawnActor = carla.command.SpawnActor
-        SetAutopilot = carla.command.SetAutopilot
-        FutureActor = carla.command.FutureActor
-        batch = []
-        for idx, transform in enumerate(spawn_points):
-            if idx >= n:
-                break
-            blueprint = random.choice(blueprints)
-            if blueprint.has_attribute('color'):
-                color = random.choice(blueprint.get_attribute('color').recommended_values)
-                blueprint.set_attribute('color', color)
-            if blueprint.has_attribute('driver_id'):
-                driver_id = random.choice(blueprint.get_attribute('driver_id').recommended_values)
-                blueprint.set_attribute('driver_id', driver_id)
-            blueprint.set_attribute('role_name', 'autopilot')
-            batch.append(SpawnActor(blueprint, transform)
-                         .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
-        for response in self.client.apply_batch_sync(batch, False):
-            if response.error:
-                print(response.error)
-            else:
-                vehicles_list.append(response.actor_id)
-        # destroy vehicles
-        # self.client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
+    def _depth_sensor_update(self, x):
+        with self.lock:
+            x.convert(carla.ColorConverter.LogarithmicDepth)
+            x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :1]
+            x = x.astype('float32') / 255.
+            self.depth_view = x
+    
+    def _get_current_view(self):
+        return np.concatenate([self.rgb_view, self.depth_view], axis=-1)

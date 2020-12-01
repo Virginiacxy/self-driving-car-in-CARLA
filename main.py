@@ -7,7 +7,6 @@ import cv2
 import numpy as np
 import torch
 import torchvision
-from torchvision.models.utils import load_state_dict_from_url
 
 try:
     sys.path.append(glob.glob('/opt/carla-simulator/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
@@ -20,6 +19,7 @@ except IndexError:
 import carla
 
 from env import DrivingEnv
+from model import MobileNetV2Encoder
 
 class RandomAgent:
     def __init__(self):
@@ -35,19 +35,16 @@ class RandomAgent:
 class DQNAgent:
     def __init__(self):
         self.device = 'cuda'
-        self.model = torchvision.models.mobilenet_v2(num_classes=3)
-        state_dict = load_state_dict_from_url('https://download.pytorch.org/models/mobilenet_v2-b0353104.pth')
-        del state_dict['classifier.1.weight']
-        del state_dict['classifier.1.bias']
-        self.model.load_state_dict(state_dict, strict=False)
+        self.model = MobileNetV2Encoder(in_channels=4, out_classes=3)
+        self.model.load_pretrained_weights()
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
         self.gamma = 0.99
         self.memory = deque(maxlen=1000)
 
     def memorize(self, view, action, next_view, reward, done):
-        view = torch.as_tensor(view).permute(2, 0, 1).float().div_(255.).unsqueeze_(0)
-        next_view = torch.as_tensor(next_view).permute(2, 0, 1).float().div_(255.).unsqueeze_(0)
+        view = torch.as_tensor(view).permute(2, 0, 1).unsqueeze_(0)
+        next_view = torch.as_tensor(next_view).permute(2, 0, 1).unsqueeze_(0)
         self.memory.append((view, action, next_view, reward, done))
         return self.learn()
 
@@ -70,7 +67,7 @@ class DQNAgent:
         return loss
 
     def act(self, view):
-        view = torch.as_tensor(view).permute(2, 0, 1).float().div_(255.).unsqueeze_(0).to(self.device)
+        view = torch.as_tensor(view).permute(2, 0, 1).unsqueeze_(0).to(self.device)
         with torch.no_grad():
             self.model.eval()
             quality = self.model(view)
@@ -82,7 +79,7 @@ client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 
 env = DrivingEnv(client)
-agent = DQNAgent()
+agent = RandomAgent()
 
 epsilon = 1
 epsilon_decay = 0.995
@@ -99,7 +96,8 @@ for episode in range(500):
         next_view, reward, done = env.step(control)
         loss = agent.memorize(view, action, next_view, reward, done)
         view = next_view
-        cv2.imshow('', view)
+        cv2.imshow('rgb', view[:, :, :3])
+        cv2.imshow('depth', view[:, :, 3])
         cv2.waitKey(1)
 
         if done:
