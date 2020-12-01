@@ -74,18 +74,24 @@ class DQNAgent:
             action = quality.argmax()
         return action.item()
     
+    def save(self, path):
+        torch.save(self.model.state_dict(), path)
+
+    def load(self, path):
+        self.model.loada_state_dict(torch.load(path, map_location=self.device))
+
 
 client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 
 env = DrivingEnv(client)
-agent = RandomAgent()
+agent = DQNAgent()
 
 epsilon = 1
 epsilon_decay = 0.995
 epsilon_min = 0.01
 
-for episode in range(500):
+for episode in range(10000000):
     view = env.reset()
     while True:
         if random.random() < epsilon:
@@ -107,3 +113,6 @@ for episode in range(500):
     epsilon = max(epsilon, epsilon_min)
 
     print(f'Episode: {episode}, loss: {loss}, epsilon: {epsilon}')
+
+    if (episode + 1) % 50 == 0:
+        agent.save('checkpoint.pth')
