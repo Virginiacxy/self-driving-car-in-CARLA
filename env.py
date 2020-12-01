@@ -35,6 +35,7 @@ class DrivingEnv:
     def reset(self):
         with self.lock:
             self.rgb_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
+            self.seg_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 3))
             self.depth_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 1))
             self.done = False
             self._destroy_main_actors()
@@ -75,8 +76,17 @@ class DrivingEnv:
             self.depth_sen = self.world.spawn_actor(depth_bp, depth_spawn_point, attach_to=self.vehicle)
             self.depth_sen.listen(self._depth_sensor_update)
 
+            # Create segmentation sensor
+            seg_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
+            seg_bp.set_attribute('image_size_x', str(self.CAM_WIDTH))
+            seg_bp.set_attribute('image_size_y', str(self.CAM_HEIGHT))
+            seg_bp.set_attribute('fov', str(self.CAM_FOV))
+            seg_spawn_point = carla.Transform(carla.Location(x=2.5, z=1.5))
+            self.seg_sen = self.world.spawn_actor(seg_bp, seg_spawn_point, attach_to=self.vehicle)
+            self.seg_sen.listen(self._segmentation_sensor_update)
+
             # Create lane invasion detector
-            lane_bp = self.world.get_blueprint_library().find('sensor.other.lane_invasion')
+            lane_bp = blueprint_library.find('sensor.other.lane_invasion')
             lane_spawn_point = carla.Transform(carla.Location(x=0, z=0))
             self.lane = self.world.spawn_actor(lane_bp, lane_spawn_point, attach_to=self.vehicle)
             self.lane.listen(self._lane_invasion_update)
@@ -89,6 +99,7 @@ class DrivingEnv:
         self.camera.destroy()
         self.collision.destroy()
         self.depth_sen.destroy()
+        self.seg_sen.destroy()
         self.lane.destroy()
 
     def _camera_update(self, x):
@@ -112,5 +123,12 @@ class DrivingEnv:
             x = x.astype('float32') / 255.
             self.depth_view = x
     
+    def _segmentation_sensor_update(self, x):
+        with self.lock:
+            x.convert(carla.ColorConverter.CityScapesPalette)
+            x = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, :3]
+            x = x.astype('float32') / 255.
+            self.seg_view = x
+
     def _get_current_view(self):
-        return np.concatenate([self.rgb_view, self.depth_view], axis=-1).astype('float32')
+        return np.concatenate([self.rgb_view, self.depth_view, self.seg_view], axis=-1).astype('float32')

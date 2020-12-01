@@ -35,7 +35,7 @@ class RandomAgent:
 class DQNAgent:
     def __init__(self):
         self.device = 'cuda'
-        self.model = MobileNetV2Encoder(in_channels=4, out_classes=3)
+        self.model = MobileNetV2Encoder(in_channels=7, out_classes=3)
         self.model.load_pretrained_weights()
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
@@ -102,8 +102,9 @@ for episode in range(10000000):
         next_view, reward, done = env.step(control)
         loss = agent.memorize(view, action, next_view, reward, done)
         view = next_view
-        cv2.imshow('rgb', view[:, :, :3])
+        cv2.imshow('rgb', view[:, :, 0:3])
         cv2.imshow('depth', view[:, :, 3])
+        cv2.imshow('seg', view[:, :, 4:7])
         cv2.waitKey(1)
 
         if done:
