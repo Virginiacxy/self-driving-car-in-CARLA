@@ -10,7 +10,7 @@ class MobileNetV2Encoder(MobileNetV2):
         if in_channels != 3:
             self.features[0][0] = nn.Conv2d(in_channels, 32, 3, 2, 1, bias=False)
 
-        self._load_pretrained_weights()
+        # self._load_pretrained_weights()
 
     def _load_pretrained_weights(self):
         state_dict = load_state_dict_from_url('https://download.pytorch.org/models/mobilenet_v2-b0353104.pth')

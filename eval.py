@@ -27,11 +27,9 @@ for episode in range(10000000):
     view = env.reset()
     while True:
         action = agent.act(view)
-        control = carla.VehicleControl(throttle=1, steer=[-1, 0, 1][action])
+        control = carla.VehicleControl(throttle=1, steer=[-0.5, 0, 0.5][action])
         view, reward, done = env.step(control)
-        cv2.imshow('rgb', view[:, :, 0:3])
-        cv2.imshow('depth', view[:, :, 3])
-        cv2.imshow('seg', view[:, :, 4:7])
+        cv2.imshow('seg', env.seg_rgb)
         cv2.waitKey(1)
 
         if done:

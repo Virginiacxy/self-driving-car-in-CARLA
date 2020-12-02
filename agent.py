@@ -19,7 +19,7 @@ class RandomAgent:
 class DQNAgent:
     def __init__(self, device='cuda'):
         self.device = device
-        self.model = MobileNetV2Encoder(in_channels=7, out_classes=3)
+        self.model = MobileNetV2Encoder(in_channels=23, out_classes=3)
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
         self.gamma = 0.99
@@ -32,7 +32,7 @@ class DQNAgent:
         return self.learn()
 
     def learn(self):
-        view, action, next_view, reward, done = zip(*random.choices(self.memory, k=8))
+        view, action, next_view, reward, done = zip(*random.choices(self.memory, k=12))
         view = torch.cat(view).to(self.device)
         next_view = torch.cat(next_view).to(self.device)
         action = torch.tensor(action)

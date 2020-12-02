@@ -23,15 +23,13 @@ from agent import DQNAgent, RandomAgent
 
 client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
-client.load_world('Town04')
-
 env = DrivingEnv(client)
 agent = DQNAgent(device='cuda')
 # agent.load('checkpoint.pth')
 
 loss = -1
 epsilon = 1
-epsilon_decay = 0.998
+epsilon_decay = 0.999
 epsilon_min = 0.02
 
 for episode in range(10000000):
@@ -41,13 +39,11 @@ for episode in range(10000000):
             action = random.choice(range(3))
         else:
             action = agent.act(view)
-        control = carla.VehicleControl(throttle=1, steer=[-1, 0, 1][action])
+        control = carla.VehicleControl(throttle=1, steer=[-0.5, 0, 0.5][action])
         next_view, reward, done = env.step(control)
         loss = agent.memorize(view, action, next_view, reward, done)
         view = next_view
-        cv2.imshow('rgb', view[:, :, 0:3])
-        cv2.imshow('depth', view[:, :, 3])
-        cv2.imshow('seg', view[:, :, 4:7])
+        cv2.imshow('seg', env.seg_rgb)
         cv2.waitKey(1)
 
         if done:
