@@ -25,12 +25,13 @@ client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 env = DrivingEnv(client)
 agent = DQNAgent(device='cuda')
-# agent.load('checkpoint.pth')
+agent.load('checkpoint.pth')
 
 loss = -1
-epsilon = 1
+epsilon = 0.15
 epsilon_decay = 0.999
-epsilon_min = 0.02
+epsilon_min = 0.05
+max_reward = 0
 
 for episode in range(10000000):
     view = env.reset()
@@ -39,7 +40,11 @@ for episode in range(10000000):
             action = random.choice(range(3))
         else:
             action = agent.act(view)
-        control = carla.VehicleControl(throttle=1, steer=[-0.5, 0, 0.5][action])
+
+        steer = [-0.25, 0, 0.25][action]
+        throttle = 1 if action == 1 else 0.1
+        control = carla.VehicleControl(throttle=throttle, steer=steer)
+
         next_view, reward, done = env.step(control)
         loss = agent.memorize(view, action, next_view, reward, done)
         view = next_view
@@ -56,3 +61,8 @@ for episode in range(10000000):
 
     if (episode + 1) % 5 == 0:
         agent.save('checkpoint.pth')
+
+    if env.total_reward > max_reward:
+        max_reward = env.total_reward
+        agent.save('checkpoint_max.pth')
+        print(f'New max_reward: {max_reward}')

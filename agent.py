@@ -2,6 +2,7 @@ import carla
 import torch
 import numpy as np
 import random
+import keyboard
 from collections import deque
 from model import *
 
@@ -16,12 +17,29 @@ class RandomAgent:
         return random.choice(range(3))
 
 
+class ManualAgent:
+    def __init__(self):
+        print('Press [left arrow] [up arrow] [right arrow] to continue')
+
+    def memorize(self, *args):
+        pass
+
+    def act(self, view):
+        while True:
+            if keyboard.is_pressed('left arrow'):
+                return 0
+            if keyboard.is_pressed('up arrow'):
+                return 1
+            if keyboard.is_pressed('right arrow'):
+                return 2
+
+
 class DQNAgent:
     def __init__(self, device='cuda'):
         self.device = device
-        self.model = MobileNetV2Encoder(in_channels=23, out_classes=3)
+        self.model = ConvEncoder(in_channels=23, out_classes=3)
         self.model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
         self.gamma = 0.99
         self.memory = deque(maxlen=1000)
 
@@ -58,7 +76,12 @@ class DQNAgent:
         return action.item()
     
     def save(self, path):
-        torch.save(self.model.state_dict(), path)
+        torch.save({
+            'model': self.model.state_dict(),
+            'optim': self.optimizer.state_dict()
+        }, path)
 
     def load(self, path):
-        self.model.load_state_dict(torch.load(path, map_location=self.device))
+        state_dict = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(state_dict['model'])
+        self.optimizer.load_state_dict(state_dict['optim'])

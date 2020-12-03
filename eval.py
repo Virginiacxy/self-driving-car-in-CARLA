@@ -14,20 +14,24 @@ import carla
 import cv2
 
 from env import DrivingEnv
-from agent import DQNAgent, RandomAgent
+from agent import DQNAgent, RandomAgent, ManualAgent
 
 client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 
 env = DrivingEnv(client)
-agent = DQNAgent()
-agent.load('checkpoint.pth')
+agent = ManualAgent()
+# agent.load('checkpoint.pth')
 
 for episode in range(10000000):
     view = env.reset()
     while True:
         action = agent.act(view)
-        control = carla.VehicleControl(throttle=1, steer=[-0.5, 0, 0.5][action])
+
+        steer = [-0.25, 0, 0.25][action]
+        throttle = 1 if action == 1 else 0.1
+        control = carla.VehicleControl(throttle=throttle, steer=steer)
+
         view, reward, done = env.step(control)
         cv2.imshow('seg', env.seg_rgb)
         cv2.waitKey(1)
