@@ -25,23 +25,38 @@ class ConvEncoder(nn.Module):
         super().__init__()
         self.out_classes = out_classes
         self.model = nn.Sequential(
-            nn.Conv2d(in_channels, 64, 3, 2, bias=False),
+            nn.Conv2d(in_channels, 64, 3, 1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.Conv2d(64, 64, 3, 2, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(True),
 
-            nn.Conv2d(64, 128, 3, 2, bias=False),
+            nn.Conv2d(64, 128, 3, 1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.Conv2d(128, 128, 3, 2, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(True),
 
-            nn.Conv2d(128, 256, 3, 2, bias=False),
+            nn.Conv2d(128, 256, 3, 1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.Conv2d(256, 256, 3, 2, bias=False),
             nn.BatchNorm2d(256),
             nn.ReLU(True),
 
-            nn.Conv2d(256, 512, 3, 2, bias=False),
+            nn.Conv2d(256, 512, 3, 1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.Conv2d(512, 512, 3, 2, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(True),
 
-            nn.Conv2d(512, 1024, 3, 2, bias=False),
+            nn.Conv2d(512, 1024, 3, 1, bias=False),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(True),
+            nn.Conv2d(1024, 1024, 3, 2, bias=False),
             nn.BatchNorm2d(1024),
             nn.ReLU(True),
 

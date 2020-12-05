@@ -20,40 +20,47 @@ import carla
 from env import DrivingEnv
 from agent import DQNAgent, RandomAgent
 
+controls = [
+    carla.VehicleControl(throttle=0.2, steer=-0.2),
+    carla.VehicleControl(throttle=1),
+    carla.VehicleControl(throttle=0.2, steer=+0.2),
+]
 
 client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 env = DrivingEnv(client)
-agent = DQNAgent(device='cuda')
-agent.load('checkpoint.pth')
+agent = DQNAgent(num_controls=len(controls), device='cuda')
+# agent.load('checkpoint.pth')
 
 loss = -1
-epsilon = 0.15
-epsilon_decay = 0.999
-epsilon_min = 0.05
+epsilon = 1
+epsilon_decay = 0.997
+epsilon_min = 0.02
 max_reward = 0
+
 
 for episode in range(10000000):
     view = env.reset()
-    for iteration in range(1000000):
+    for iteration in range(5000):
         if random.random() < epsilon:
-            action = random.choice(range(3))
+            action = random.choice(range(len(controls)))
         else:
             action = agent.act(view)
 
-        steer = [-0.25, 0, 0.25][action]
-        throttle = 1 if action == 1 else 0.1
-        control = carla.VehicleControl(throttle=throttle, steer=steer)
+        control = controls[action]
 
         next_view, reward, done = env.step(control)
-        loss = agent.memorize(view, action, next_view, reward, done)
-        view = next_view
+        agent.memorize(view, action, next_view, reward, done)
+
         cv2.imshow('seg', env.seg_rgb)
         cv2.waitKey(1)
+
+        view = next_view
 
         if done:
             break
 
+    loss = agent.learn()
     epsilon = epsilon * epsilon_decay
     epsilon = max(epsilon, epsilon_min)
 

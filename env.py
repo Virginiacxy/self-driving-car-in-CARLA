@@ -8,9 +8,9 @@ import cv2
 
 
 class DrivingEnv:
-    CAM_WIDTH = 256
-    CAM_HEIGHT = 256
-    CAM_FOV = 50
+    CAM_WIDTH = 128
+    CAM_HEIGHT = 128
+    CAM_FOV = 70
 
     view = None
     done = False
@@ -23,7 +23,7 @@ class DrivingEnv:
         # Change to use synchronized fixed time-step 
         settings = self.world.get_settings()
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = 0.05
+        settings.fixed_delta_seconds = 0.2
         self.world.apply_settings(settings)
 
         self._create_main_actors()
@@ -35,24 +35,25 @@ class DrivingEnv:
         # Reward
         if self.done:
             reward = -5
-        elif self.lane_invasion:
-            reward = -1
         else:
             reward = 1
+            # velocity = self.vehicle.get_velocity()
+            # curr_location = self.vehicle.get_transform().location
+            # reward = (self.vehicle_location.x - curr_location.x) ** 2 + (self.vehicle_location.y - curr_location.y) ** 2 - 0.1
+            # self.vehicle_location = curr_location
 
         self.total_reward += reward
-        self.lane_invasion = False
+
         return self.seg_view, reward, self.done
 
     def reset(self):
         self.seg_view = np.zeros((self.CAM_HEIGHT, self.CAM_WIDTH, 23), dtype=np.float32)
-        self.locations = deque(maxlen=10)
         self.done = False
         self.total_reward = 0
-        self.lane_invasion = False
         self._destroy_main_actors()
         self._create_main_actors()
         self.world.tick()
+        self.vehicle_location = self.vehicle.get_transform().location
         return self.seg_view
 
     def _create_main_actors(self):
@@ -75,8 +76,7 @@ class DrivingEnv:
             seg_bp.set_attribute('image_size_x', str(self.CAM_WIDTH))
             seg_bp.set_attribute('image_size_y', str(self.CAM_HEIGHT))
             seg_bp.set_attribute('fov', str(self.CAM_FOV))
-            # seg_spawn_point = carla.Transform(carla.Location(x=2.5, z=1.5))
-            seg_spawn_point = carla.Transform(carla.Location(x=10, z=50), carla.Rotation(pitch=-90))
+            seg_spawn_point = carla.Transform(carla.Location(x=20, z=50), carla.Rotation(pitch=-90))
             self.seg_sen = self.world.spawn_actor(seg_bp, seg_spawn_point, attach_to=self.vehicle)
             self.seg_sen.listen(self._segmentation_sensor_update)
 
@@ -88,7 +88,7 @@ class DrivingEnv:
 
             # Initialize speed
             for _ in range(60):
-                self.vehicle.apply_control(carla.VehicleControl(throttle = 1))
+                self.vehicle.apply_control(carla.VehicleControl(throttle = 0.5))
                 self.world.tick()
         except:
             self._destroy_main_actors()
@@ -104,8 +104,9 @@ class DrivingEnv:
         self.done = True
 
     def _lane_invasion_update(self, event):
-        self.lane_invasion = True
+        # self.lane_invasion = True
         # self.done = True
+        pass
     
     def _segmentation_sensor_update(self, x):
         seg_idx = np.array(x.raw_data).reshape(self.CAM_HEIGHT, self.CAM_WIDTH, -1)[:, :, 2]
