@@ -30,10 +30,10 @@ client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 env = DrivingEnv(client)
 agent = DQNAgent(num_controls=len(controls), device='cuda')
-agent.load('checkpoint copy.pth')
+# agent.load('checkpoint copy.pth')
 
 loss = -1
-epsilon = 0.3
+epsilon = 1
 epsilon_decay = 0.997
 epsilon_min = 0.02
 max_reward = 0

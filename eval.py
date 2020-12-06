@@ -27,7 +27,7 @@ controls = [
 
 env = DrivingEnv(client)
 agent = DQNAgent(num_controls=len(controls))
-agent.load('checkpoint copy.pth')
+agent.load('checkpoint.pth')
 # agent = ManualAgent()
 
 for episode in range(10000000):
