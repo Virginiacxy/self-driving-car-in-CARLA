@@ -76,7 +76,7 @@ class DrivingEnv:
             seg_bp.set_attribute('image_size_x', str(self.CAM_WIDTH))
             seg_bp.set_attribute('image_size_y', str(self.CAM_HEIGHT))
             seg_bp.set_attribute('fov', str(self.CAM_FOV))
-            seg_spawn_point = carla.Transform(carla.Location(x=2, z=5), carla.Rotation(pitch=0))
+            seg_spawn_point = carla.Transform(carla.Location(x=1.8, z=2), carla.Rotation(pitch=0))
             self.seg_sen = self.world.spawn_actor(seg_bp, seg_spawn_point, attach_to=self.vehicle)
             self.seg_sen.listen(self._segmentation_sensor_update)
 
