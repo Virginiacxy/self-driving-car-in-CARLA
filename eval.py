@@ -20,19 +20,19 @@ client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 
 controls = [
-    carla.VehicleControl(throttle=0.2, steer=-0.2),
-    carla.VehicleControl(throttle=1),
-    carla.VehicleControl(throttle=0.2, steer=+0.2),
+    carla.VehicleControl(throttle=0.4, steer=-0.2),
+    carla.VehicleControl(throttle=0.4),
+    carla.VehicleControl(throttle=0.4, steer=+0.2),
 ]
 
 env = DrivingEnv(client)
 agent = DQNAgent(num_controls=len(controls))
-agent.load('checkpoint.pth')
+agent.load('checkpoint copy.pth')
 # agent = ManualAgent()
 
 for episode in range(10000000):
     view = env.reset()
-    while True:
+    for iteration in range(10000000):
         action = agent.act(view)
         control = controls[action]
 
@@ -41,5 +41,5 @@ for episode in range(10000000):
         cv2.waitKey(1)
 
         if done:
-            print(f'Episode {episode}, total_reward: {env.total_reward}')
+            print(f'Episode {episode}, iterations: {iteration}, total_reward: {env.total_reward}')
             break

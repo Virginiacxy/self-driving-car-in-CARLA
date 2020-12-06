@@ -50,7 +50,7 @@ class DQNAgent:
         self.memory.append((view, action, next_view, reward, done))
 
     def learn(self):
-        if len(self.memory) < 500:
+        if len(self.memory) < 1000:
             return -1
         for _ in range(10):
             view, action, next_view, reward, done = zip(*random.choices(self.memory, k=50))
